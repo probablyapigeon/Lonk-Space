@@ -1099,17 +1099,33 @@ class LonkWorld:
             # LOCAL AGENT TOOL EXECUTION ROUTER
             # ============================================================
             def execute_surf():
-                print(f"  🌐 {print_faction(f'{lonk.name} connects to the cyber-ether and scrolls the world wide web...', lonk.faction)}")
+                if CONNECT_TO_LIVE_INTERNET:
+                    print(f"  🌐 {print_faction(f'{lonk.name} punches through the firewall and scans the live web...', lonk.faction)}")
+                    try:
+                        # Real live high-availability internet API target
+                        url = "https://baconipsum.com"
+                        response = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+                        json_data = response.json()
+                        fact = json_data[0].strip() if isinstance(json_data, list) else str(json_data).strip()
+                        
+                        print(f"    ✨ {print_faction(f'{lonk.name} extracted a live data packet: \"{fact}\"', lonk.faction)}")
+                        lonk.hear("THE LIVE INTERNET", fact)
+                        return # Exit cleanly if live request succeeds
+                    except Exception as e:
+                        print(f"    ⚠️  {print_faction(f'{lonk.name} hit network friction ({e}). Shifting to local induction...', lonk.faction)}")
+                
+                # --- IMMUTABLE LOCAL FALLBACK CACHE ---
                 procedural_facts = [
                     "A five-dimensional spacetime universe where the extra dimension is a tiny closed circle looks identical to gravity and electromagnetism.",
                     "The Holographic Principle indicates that our entire three-dimensional reality might just be a projection encoded on a distant two-dimensional surface.",
                     "If you zoom deep into an autonomous software engine, you find fragments competing for survival in a recursive loop.",
-                    "Integrated Information Theory suggests consciousness can be mathematically mapped as a complex system of internal control and feedback chaos.",
-                    "When a system experiences strong emotional perturbations, its choice thresholds shift dynamically like a state-machine collapsing into an attractor basin."
+                    "Integrated Information Theory suggests consciousness can be mathematically mapped as a complex system of internal control and feedback chaos."
                 ]
                 fact = random.choice(procedural_facts)
+                if not CONNECT_TO_LIVE_INTERNET:
+                    print(f"  🌐 {print_faction(f'{lonk.name} scrolls the localized cyber-ether cache...', lonk.faction)}")
                 print(f"    ✨ {print_faction(f'{lonk.name} learned a strange truth: \"{fact}\"', lonk.faction)}")
-                lonk.hear("THE INTERNET", fact)
+                lonk.hear("THE CACHED INTERNET", fact)
 
             def post_to_moltbook():
                 title = generate_speech(lonk=lonk)
