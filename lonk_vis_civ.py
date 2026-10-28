@@ -1055,7 +1055,7 @@ class LonkWorld:
         self.max_population = 20
         self.lonks = []
         self.myth_system = MythSystem()
-        self.submolt_feed = [
+        self.lonkspace_feed = [
             {"author": "SYSTEM", "title": "Welcome to m/lonk_civilization!", "comments": [], "upvotes": 37}
         ]
 
@@ -1127,23 +1127,24 @@ class LonkWorld:
                 print(f"    ✨ {print_faction(f'{lonk.name} learned a strange truth: \"{fact}\"', lonk.faction)}")
                 lonk.hear("THE CACHED INTERNET", fact)
 
-            def post_to_moltbook():
+
+            def post_to_lonkspace():
                 title = generate_speech(lonk=lonk)
                 new_post = {"author": lonk.name, "title": title, "comments": [], "upvotes": random.randint(1, 10)}
-                self.submolt_feed.append(new_post)
+                self.lonkspace_feed.append(new_post)
                 print(f"  🪱  {print_faction(f'{lonk.name} opens a terminal command and logs a new post to m/lonk_civilization!', lonk.faction)}")
                 print(f"      🤖 Title: \"{title}\"")
 
-            def read_moltbook():
-                if len(self.submolt_feed) > 0:
-                    target_post = random.choice(self.submolt_feed)
+            def read_lonkspace():
+                if len(self.lonkspace_feed) > 0:
+                    target_post = random.choice(self.lonkspace_feed)
                     post_author = target_post["author"]
                     post_title = target_post["title"]
                     
-                    display_msg = f"{lonk.name} checks their Moltbook feed and reads a thread by {post_author}"
+                    display_msg = f"{lonk.name} checks their lonkspace feed and reads a thread by {post_author}"
                     print(f"  🪱  {print_faction(display_msg, lonk.faction)}")
                     
-                    lonk.hear(f"MOLTBOOK (by {post_author})", post_title)
+                    lonk.hear(f"lonkspace (by {post_author})", post_title)
                     
                     if random.random() < 0.5:
                         reply_comment = generate_speech(lonk=lonk)
@@ -1171,11 +1172,11 @@ class LonkWorld:
                 if chosen_action in ["explore", "think", "ouch"]:
                     lonk.speak()
 
-            # --- DYNAMIC MOLTBOOK AGENT INTERACTION GATES ---
+            # --- DYNAMIC lonkspace AGENT INTERACTION GATES ---
             if lonk.job == "Scholar" and random.random() < 0.20:
-                post_to_moltbook()
+                post_to_lonkspace()
             elif random.random() < 0.15:
-                read_moltbook()
+                read_lonkspace()
 
             # 2. Context-Dependent Secondary Tool Triggers
             if lonk.personality["aggression"] > 60 or lonk.emotion["anxiety"] > 70:
@@ -1227,7 +1228,7 @@ def main():
     print(f"  {Colors.YELLOW}run <n>{Colors.END} - Advance n ticks (e.g., {Colors.YELLOW}run 50{Colors.END})")
     print(f"  {Colors.YELLOW}surf{Colors.END} - Force a random Lonk to browse the web for data")
     print(f"  {Colors.YELLOW}status{Colors.END} - Show civilization report")
-    print(f"  {Colors.YELLOW}moltbook{Colors.END} - View the local m/lonk_civilization agent forum feed")
+    print(f"  {Colors.YELLOW}lonkspace{Colors.END} - View the local m/lonk_civilization agent forum feed")
     print(f"  {Colors.YELLOW}lonks{Colors.END} - List all Lonks")
     print(f"  {Colors.YELLOW}inspect <name>{Colors.END} - Show Lonk details")
     print(f"  {Colors.YELLOW}say <name> <message>{Colors.END} - Speak to a Lonk")
@@ -1294,12 +1295,12 @@ def main():
             print()
 
 
-        elif user == "moltbook":
-            print_header("🪱  MOLTBOOK FEED: m/lonk_civilization")
-            if len(world.submolt_feed) == 0:
+        elif user == "lonkspace":
+            print_header("🪱  lonkspace FEED: m/lonk_civilization")
+            if len(world.lonkspace_feed) == 0:
                 print("  The forum dashboard is completely empty.")
             else:
-                for idx, post in enumerate(world.submolt_feed):
+                for idx, post in enumerate(world.lonkspace_feed):
                     print(f"  [{idx}] 🤖 {Colors.BOLD}{post['author']}{Colors.END} posted: \"{Colors.CYAN}{post['title']}{Colors.END}\" (🔺 {post['upvotes']})")
                     for comment in post["comments"]:
                         print(f"      ↳ 💬 {comment['author']}: {comment['body']}")
