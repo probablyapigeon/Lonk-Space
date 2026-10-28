@@ -3,6 +3,7 @@ import random
 import math
 import time
 import re
+import uuid
 from collections import defaultdict
 
 # ============================================================
@@ -479,6 +480,7 @@ class ReadingNetwork:
 
 class Lonk:
     def __init__(self, name, world=None):
+        self.id = uuid.uuid4().hex
         self.name = name
         self.world = world
         self.state = [0.5, 0.5, 0.2, 0.3, 0.1]
@@ -1161,7 +1163,7 @@ class Lonk:
         print(f"  {Colors.GREEN}👶 {self.name} and {mate.name} produce {print_faction(baby.name, baby.faction)} (Gen {baby.generation})!{Colors.END}")
         return baby
 
-    def age_tick(self):
+    def age_tick(self, allow_birth=True):
         if not self.alive:
             return None
 
@@ -1170,7 +1172,7 @@ class Lonk:
         if random.random() < 0.02:
             self.change_job()
 
-        if self.age > 5 and random.random() < 0.10:
+        if allow_birth and self.age > 5 and random.random() < 0.10:
             others = [l for l in self.world.lonks if l is not self and l.alive and l.age > 3]
             if others:
                 mates = [l for l in others if self.relationships.get(l.name, 0) > 5]
@@ -1209,7 +1211,7 @@ class LonkWorld:
         self.lonks = []
         self.myth_system = MythSystem()
         self.lonkspace_feed = [
-            {"author": "SYSTEM", "title": "Welcome to m/lonk_civilization!", "comments": [], "upvotes": 37}
+            {"id": uuid.uuid4().hex, "author": "SYSTEM", "author_type": "system", "author_id": None, "title": "Welcome to m/lonk_civilization!", "body": "", "tick": 0, "comments": [], "readers": [], "upvotes": 37}
         ]
 
         for i in range(count):
@@ -1218,6 +1220,45 @@ class LonkWorld:
             self.lonks.append(lonk)
             if random.random() < 0.5:
                 lonk.wander()
+
+    def add_post(self, author, title, body='', author_type='lonk', author_id=None):
+        post = {'id': uuid.uuid4().hex, 'author': author, 'author_id': author_id,
+                'author_type': author_type, 'title': title, 'body': body,
+                'tick': self.tick, 'comments': [], 'upvotes': 0, 'readers': []}
+        self.lonkspace_feed.append(post)
+        return post
+
+    def add_comment(self, post_id, author, body, author_type='lonk', author_id=None):
+        post = next((p for p in self.lonkspace_feed if p.get('id') == post_id
+                     and not p.get('hidden')), None)
+        if post is None:
+            raise ValueError('Thread not found.')
+        comment = {'id': uuid.uuid4().hex, 'author': author, 'author_id': author_id,
+                   'author_type': author_type, 'body': body, 'tick': self.tick}
+        post['comments'].append(comment)
+        return comment
+
+    def read_post(self, lonk, post, reply=None):
+        if post.get('hidden'):
+            return
+        print(f"  🪱 {lonk.name} reads a thread by {post['author']}")
+        # A bounded visit reads the post and its five most recent visible replies.
+        entries = [(post['author'], post['title'] + ' ' + post.get('body', ''),
+                    post.get('author_type') == 'human')]
+        entries.extend((c['author'], c['body'], c.get('author_type') == 'human')
+                       for c in [c for c in post['comments'] if not c.get('hidden')][-5:])
+        for author, text, human in entries:
+            lonk.hear(f"lonkspace (by {author})", text.strip(), is_player=human)
+            lonk.memory['events'][-1]['source_post_id'] = post.get('id')
+        readers = post.setdefault('readers', [])
+        readers[:] = [r for r in readers if r['lonk_id'] != lonk.id]
+        readers.append({'lonk_id': lonk.id, 'name': lonk.name, 'tick': self.tick})
+        readers[:] = readers[-50:]
+        if reply is True or (reply is None and random.random() < 0.5):
+            comment = self.add_comment(post['id'], lonk.name,
+                                       generate_speech(lonk=lonk), author_id=lonk.id)
+            post['upvotes'] += 1
+            print(f"      💬 {lonk.name}: {comment['body']}")
 
     def show_civilization_status(self):
         from collections import Counter
@@ -1278,7 +1319,7 @@ class LonkWorld:
             for item in history:
                 print(f'  {item["source"]}: {item["title"]}\n    {item["source_url"]}')
 
-    def world_tick(self):
+    def world_tick(self, population_limit=None):
         self.tick += 1
         print_header(f"🌍 WORLD TICK {self.tick}")
 
@@ -1299,7 +1340,9 @@ class LonkWorld:
                 continue
 
             # 1. Standard lifecycle upkeep tool
-            baby = lonk.age_tick()
+            allow_birth = (population_limit is None or
+                           len(self.lonks) + len(new_births) - len(dead_lonks) < population_limit)
+            baby = lonk.age_tick(allow_birth=allow_birth)
             if baby:
                 new_births.append(baby)
 
@@ -1311,28 +1354,15 @@ class LonkWorld:
             # LOCAL AGENT TOOL EXECUTION ROUTER
             # ============================================================
             def post_to_lonkspace():
-                title = generate_speech(lonk=lonk)
-                new_post = {"author": lonk.name, "title": title, "comments": [], "upvotes": random.randint(1, 10)}
-                self.lonkspace_feed.append(new_post)
-                print(f"  🪱  {print_faction(f'{lonk.name} opens a terminal command and logs a new post to m/lonk_civilization!', lonk.faction)}")
-                print(f"      🤖 Title: \"{title}\"")
+                post = self.add_post(lonk.name, generate_speech(lonk=lonk),
+                                     author_id=lonk.id)
+                post['upvotes'] = random.randint(1, 10)
+                print(f"  🪱 {lonk.name} posts: {post['title']}")
 
             def read_lonkspace():
-                if len(self.lonkspace_feed) > 0:
-                    target_post = random.choice(self.lonkspace_feed)
-                    post_author = target_post["author"]
-                    post_title = target_post["title"]
-                    
-                    display_msg = f"{lonk.name} checks their lonkspace feed and reads a thread by {post_author}"
-                    print(f"  🪱  {print_faction(display_msg, lonk.faction)}")
-                    
-                    lonk.hear(f"lonkspace (by {post_author})", post_title)
-                    
-                    if random.random() < 0.5:
-                        reply_comment = generate_speech(lonk=lonk)
-                        target_post["comments"].append({"author": lonk.name, "body": reply_comment})
-                        target_post["upvotes"] += 1
-                        print(f"      💬 Reply dropped: \"{reply_comment}\" [Upvotes: {target_post['upvotes']}]")
+                visible = [p for p in self.lonkspace_feed if not p.get('hidden')]
+                if visible:
+                    self.read_post(lonk, random.choice(visible))
 
             local_tools = {
                 "attack": lonk.attack,
