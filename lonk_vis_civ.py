@@ -6,6 +6,13 @@ import re
 from collections import defaultdict
 
 # ============================================================
+# GLOBAL ENGINE CONFIGURATION
+# ============================================================
+# Set to True to let your Lonks break out onto the live internet.
+# Set to False to keep them quarantined in the local offline cache.
+CONNECT_TO_LIVE_INTERNET = False 
+
+# ============================================================
 # VISUAL CONFIGURATION
 # ============================================================
 class Colors:
