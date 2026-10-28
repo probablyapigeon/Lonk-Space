@@ -1219,6 +1219,65 @@ class LonkWorld:
             if random.random() < 0.5:
                 lonk.wander()
 
+    def show_civilization_status(self):
+        from collections import Counter
+        living = [lonk for lonk in self.lonks if lonk.alive]
+        print_header('CIVILIZATION REPORT')
+        print(f'World tick: {self.tick} | Living Lonks: {len(living)}')
+        print(f'Myths: {len(self.myth_system.myths)} | Local forum posts: {len(self.lonkspace_feed)}')
+        print(f'Local forum comments: {sum(len(p.get("comments", [])) for p in self.lonkspace_feed)}')
+        if not living:
+            print('No living Lonks in this world.'); return
+        print(f'Total wealth: {sum(l.wealth for l in living)} | Highest generation: {max(l.generation for l in living)}')
+        for label, counts in (
+            ('Factions', Counter(l.faction for l in living)),
+            ('Jobs', Counter(l.job or 'None' for l in living)),
+            ('Territories', Counter(l.territory or 'Nowhere' for l in living)),
+        ):
+            print(label + ': ' + ', '.join(f'{name}: {count}' for name, count in sorted(counts.items())))
+        vocabulary = {word for l in living for word, count in l.vocabulary.items() if count > 0}
+        print(f'Shared vocabulary: {len(vocabulary)} distinct words across living Lonks')
+        print(f'Recorded readings: {sum(len(getattr(l, "reading_history", [])) for l in living)} (retained history)')
+        print('Average emotions: ' + ', '.join(
+            f'{key}: {sum(l.emotion[key] for l in living) / len(living):.1f}' for key in living[0].emotion))
+
+    def show_lonk_details(self, name):
+        matches = [l for l in self.lonks if l.name.casefold() == name.strip().casefold()]
+        if not matches:
+            print(f'No Lonk named {name}. Use lonks to see the current names.'); return
+        if len(matches) > 1:
+            print(f'{len(matches)} Lonks share that name; showing each one.')
+        for lonk in matches:
+            print_header(f'LONK DETAILS: {lonk.name}')
+            print(f'Faction: {lonk.faction} | Job: {lonk.job} | Generation: {lonk.generation}')
+            print(f'Alive: {lonk.alive} | Age: {lonk.age}/{lonk.lifespan} | Trauma: {lonk.trauma}')
+            print(f'Territory: {lonk.territory or "Nowhere"} | Wealth: {lonk.wealth}')
+            print('Emotions: ' + ', '.join(f'{k}: {v:g}' for k, v in lonk.emotion.items()))
+            print('Personality: ' + ', '.join(f'{k}: {v:g}' for k, v in lonk.personality.items()))
+            print('Internal state: ' + ', '.join(f'{k}: {v:.3f}' for k, v in zip(('Psi', 'theta', 'A', 'V', 'P'), lonk.state)))
+            print('Actions: ' + ', '.join(f'{k}: {v}' for k, v in lonk.habits.items()))
+            print('Inventory: ' + (', '.join(lonk.inventory) or 'None'))
+            print(f'Religion: {lonk.religion["name"]} | Faith: {lonk.faith} | Known myths: {len(lonk.known_myths)}')
+            rival = getattr(lonk.rival, 'name', lonk.rival)
+            print(f'Crush: {lonk.crush or "None"} | Rival: {rival or "None"}')
+            print('Relationships: ' + (', '.join(f'{k}: {v:g}' for k, v in sorted(lonk.relationships.items(), key=lambda x: -x[1])) or 'None'))
+            print('Grudges: ' + (', '.join(lonk.grudges) or 'None'))
+            print(f'Catchphrase: {lonk.catchphrase or "None"}')
+            words = sorted(((w, n) for w, n in lonk.vocabulary.items() if n > 0), key=lambda x: (-x[1], x[0]))
+            print(f'Vocabulary: {len(words)} words; most frequent: ' + (', '.join(f'{w} ({n})' for w, n in words[:15]) or 'None yet'))
+            print('Recent memories:')
+            events = lonk.memory.get('events', [])[-5:]
+            if not events:
+                print('  None yet.')
+            for event in events:
+                print(f'  Tick {event.get("tick")}, {event.get("speaker", "unknown")}: {event.get("message", "")[:300]}')
+            print('Recent reading sources:')
+            history = getattr(lonk, 'reading_history', [])[-5:]
+            if not history:
+                print('  None yet.')
+            for item in history:
+                print(f'  {item["source"]}: {item["title"]}\n    {item["source_url"]}')
+
     def world_tick(self):
         self.tick += 1
         print_header(f"🌍 WORLD TICK {self.tick}")
