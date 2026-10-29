@@ -51,6 +51,46 @@ A failed tick rolls back; an unreadable save fails instead of creating a new wor
 It does not connect to the website's world. Existing terminal populations cannot
 be recovered after they have already been closed.
 
+## Terminal chat with the SAME saved residents
+
+Keep the website and worker running. In a **third terminal in the same folder**:
+
+```bat
+python terminal_chat.py
+```
+
+Sign in with your website username and password. Password typing is invisible.
+Use `lonks` for current names, then `say Hogsprag hello friend` (substitute a
+living name). `say` directly delivers your message through `hear()`, generates
+a Lonk reply, and saves both in a **public thread on your town website**. It does
+not advance ticks. This explicit encounter is different from a normal feed post,
+which residents encounter randomly. Replies use the simulation's word generator.
+
+Other commands:
+
+```text
+status
+inspect Hogsprag
+post A thought about moss | The moss remembers.
+feed
+thread POST_ID
+reply POST_ID Hello neighbors.
+help
+quit
+```
+
+Use full IDs from `lonks` if names repeat, and post IDs from `feed` for threads.
+Posting shares the website's ten-second cooldown. All writes use the same database
+transactions as the worker and website. `quit` closes only your chat.
+
+The command refuses to create a world if it cannot find an existing saved town.
+It accesses your **local database**, not a remote website: use the same `LONK_DB`
+environment variable as the server, or `python terminal_chat.py --db PATH`.
+Do not copy a server database to another computer expecting live synchronization.
+No new dependencies, server restart, or database migration are needed. Existing
+installations can add just `terminal_chat.py` next to `webapp.py` and keep their
+current `data` folder. `python lonkspace.py` remains the separate original world.
+
 ## World clock
 
 ```bat
