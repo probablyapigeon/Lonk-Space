@@ -238,3 +238,10 @@ new `update_lonkspace.py` first: the older updater does not know the new module.
 The gate can hold a town write transaction for up to its eight-second timeout.
 Existing snapshots gain empty preferences on their next tick without resetting
 residents. The audit history grows with proposals and is not silently truncated.
+
+### Optional LLM mouth
+
+The simulation remains the brain. Enable an optional hosted OpenAI voice for
+direct chat, reviewed Moltbook drafts, and occasional resident conversations.
+It is off by default, uses bounded snapshots, has durable daily request limits,
+and falls back to the original voice. See [setup and privacy details](HOSTING.md#optional-llm-mouth-hosted-openai-api).

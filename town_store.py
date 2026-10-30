@@ -65,7 +65,8 @@ def load_world(text):
     return decode(data['root'])
 
 
-DEFAULT_SETTINGS = {'internet': True, 'paused': False, 'interval': 30}
+DEFAULT_SETTINGS = {'internet': True, 'paused': False, 'interval': 30,
+                    'llm': False, 'llm_ambient': False}
 
 
 class Store:
@@ -102,6 +103,9 @@ class Store:
                     revision INTEGER NOT NULL DEFAULT 0, last_tick REAL,
                     settings TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS llm_usage (
+                    day TEXT NOT NULL, scope TEXT NOT NULL, count INTEGER NOT NULL,
+                    PRIMARY KEY(day,scope));
                 CREATE TABLE IF NOT EXISTS activity (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL,
                     tick INTEGER NOT NULL, text TEXT NOT NULL);
