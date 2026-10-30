@@ -7,11 +7,13 @@ import secrets
 import sqlite3
 import time
 import uuid
+import json
 from datetime import timedelta
 
-from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, session, url_for, g, jsonify
 from werkzeug.security import check_password_hash, generate_password_hash
 from town_store import Store
+from lonkspace import capture_output
 
 
 def create_app(config=None):
@@ -42,12 +44,15 @@ def create_app(config=None):
         return db.execute('SELECT id,username FROM users WHERE id=?',
                           (session.get('uid', ''),)).fetchone()
 
-    def is_admin(user):
-        return bool(user and app.config['ADMIN_USER'] and
-                    user['username'].casefold() == app.config['ADMIN_USER'])
+    def town():
+        if not g.user:
+            abort(401, 'Sign in to visit your town.')
+        return store.for_user(g.user['id'])
 
     @app.before_request
     def protect_forms():
+        with contextlib.closing(store.connect()) as db:
+            g.user = current_user(db)
         session.setdefault('csrf', secrets.token_hex(32))
         if request.method == 'POST':
             given = request.form.get('csrf', '')
@@ -78,28 +83,45 @@ def create_app(config=None):
             return True
 
     def render(page='feed', **extra):
-        with contextlib.closing(store.connect()) as db:
-            world = store.read(db)
-            user = current_user(db)
-            last_tick = db.execute('SELECT last_tick FROM world WHERE id=1').fetchone()[0]
-        posts = [p for p in world.lonkspace_feed if not p.get('hidden')]
+        from types import SimpleNamespace
+        user = g.user
+        world = SimpleNamespace(tick=0, lonks=[], lonkspace_feed=[])
+        settings, logs, last_tick, pending = {}, [], None, 0
+        if user:
+            with contextlib.closing(store.connect()) as db:
+                bound = town()
+                world = bound.read(db)
+                settings = bound.settings(db)
+                last_tick = db.execute('SELECT last_tick FROM towns WHERE owner_id=?', (user['id'],)).fetchone()[0]
+                logs = db.execute('SELECT tick,text FROM activity WHERE owner_id=? ORDER BY id DESC LIMIT 15', (user['id'],)).fetchall()[::-1]
+                pending = db.execute("SELECT count(*) FROM commands WHERE owner_id=? AND state IN ('pending','running')", (user['id'],)).fetchone()[0]
+        with capture_output() as report:
+            if user:
+                world.show_civilization_status()
+        report_text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', report.getvalue())
+        posts = list(reversed([p for p in world.lonkspace_feed if not p.get('hidden')]))
         page_number = max(1, request.args.get('page', 1, type=int))
-        posts = list(reversed(posts))
         total = len(posts)
         posts = posts[(page_number-1)*20:page_number*20]
         return render_template('town.html', page=page, world=world, user=user,
-                               admin=is_admin(user), posts=posts, page_number=page_number,
+                               admin=bool(user), posts=posts, page_number=page_number,
                                has_next=page_number*20 < total, total_posts=total,
+                               settings=settings, logs=logs, pending=pending, status_report=report_text,
                                worker_active=bool(last_tick and time.time()-last_tick < 180),
                                **extra)
 
     @app.get('/')
     def home():
-        return render()
+        return render('dashboard' if g.user else 'welcome')
+
+    @app.get('/feed')
+    def feed():
+        town()
+        return render('feed')
 
     @app.get('/thread/<post_id>')
     def thread(post_id):
-        world = store.load()
+        world = town().load()
         post = next((p for p in world.lonkspace_feed if p.get('id') == post_id
                      and not p.get('hidden')), None)
         if not post:
@@ -108,10 +130,16 @@ def create_app(config=None):
 
     @app.get('/lonk/<lonk_id>')
     def profile(lonk_id):
-        lonk = next((l for l in store.load().lonks if l.id == lonk_id), None)
+        lonk = next((l for l in town().load().lonks if l.id == lonk_id), None)
         if not lonk:
-            abort(404, 'This resident is no longer in the living population.')
-        return render('profile', lonk=lonk,
+            abort(404, 'This resident is no longer in your living population.')
+        with capture_output() as output:
+            world = lonk.world
+            world.lonks = [lonk]
+            world.show_lonk_details(lonk.name)
+        import re as regex
+        details = regex.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output.getvalue())
+        return render('profile', lonk=lonk, details=details,
                       words=sorted(lonk.vocabulary.items(), key=lambda x: -x[1])[:20])
 
     @app.route('/<action>', methods=['GET', 'POST'])
@@ -144,6 +172,7 @@ def create_app(config=None):
             if not user or not check_password_hash(user['password'], password):
                 flash('Username or password not recognized.')
                 return render(action), 401
+            store.ensure_town(db, user['id'])
             session.clear()
             session['uid'] = user['id']
             session['csrf'] = secrets.token_hex(32)
@@ -169,7 +198,7 @@ def create_app(config=None):
             last = db.execute('SELECT last_post FROM users WHERE id=?', (user['id'],)).fetchone()[0]
             if time.time() - last < app.config.get('POST_INTERVAL', 10):
                 abort(429, 'Give the town a moment. You can post once every ten seconds.')
-            world = store.read(db)
+            world = town().read(db)
             if parent:
                 try:
                     world.add_comment(parent, user['username'], body, 'human', user['id'])
@@ -178,7 +207,7 @@ def create_app(config=None):
                 post_id = parent
             else:
                 post_id = world.add_post(user['username'], title, body, 'human', user['id'])['id']
-            store.write(db, world)
+            town().write(db, world)
             db.execute('UPDATE users SET last_post=? WHERE id=?', (time.time(), user['id']))
         return redirect(url_for('thread', post_id=post_id))
 
@@ -186,7 +215,7 @@ def create_app(config=None):
     def hide(post_id):
         with store.transaction() as db:
             user = current_user(db)
-            world = store.read(db)
+            world = town().read(db)
             post = next((p for p in world.lonkspace_feed if p.get('id') == post_id), None)
             if not post:
                 abort(404)
@@ -194,11 +223,116 @@ def create_app(config=None):
             item = next((c for c in post['comments'] if c.get('id') == comment_id), None) if comment_id else post
             if not item:
                 abort(404)
-            if not user or not (is_admin(user) or (item.get('author_type') == 'human' and item.get('author_id') == user['id'])):
+            if not user:
                 abort(403)
             item['hidden'] = True
-            store.write(db, world)
+            town().write(db, world)
         flash('Hidden from the feed and future reading. Existing Lonk memories are unchanged.')
+        return redirect(url_for('home'))
+
+    @app.post('/say')
+    def say():
+        bound = town()
+        body = request.form.get('body', '').strip()
+        if not 1 <= len(body) <= 2000:
+            abort(400, 'Write a message of 1–2000 characters.')
+        with bound.transaction() as db, capture_output() as output:
+            user = db.execute('SELECT * FROM users WHERE id=?', (g.user['id'],)).fetchone()
+            if time.time() - user['last_post'] < app.config.get('POST_INTERVAL', 10):
+                abort(429, 'Wait ten seconds between messages.')
+            world = bound.read(db)
+            lonk = next((l for l in world.lonks if l.id == request.form.get('resident') and l.alive), None)
+            if not lonk:
+                abort(404, 'Choose a current resident from your town.')
+            post = world.add_post(user['username'], f'A conversation with {lonk.name}'[:160], body, 'human', user['id'])
+            world.read_post(lonk, post, reply=True)
+            bound.write(db, world)
+            bound.log(db, world.tick, output.getvalue())
+            db.execute('UPDATE users SET last_post=? WHERE id=?', (time.time(),user['id']))
+        return redirect(url_for('thread', post_id=post['id']))
+
+    @app.post('/settings')
+    def settings():
+        bound = town()
+        interval = request.form.get('interval', '30', type=int)
+        if interval not in (10,30,60,120):
+            abort(400, 'Choose a supported clock speed.')
+        with bound.transaction() as db:
+            values = {'internet':request.form.get('internet') == 'on',
+                      'paused':request.form.get('paused') == 'on', 'interval':interval}
+            db.execute('UPDATE towns SET settings=? WHERE owner_id=?', (json.dumps(values),g.user['id']))
+            bound.log(db, bound.read(db).tick, 'Town settings saved. Outside reading ' + ('enabled.' if values['internet'] else 'disabled.'))
+        flash('Settings saved for your town.')
+        return redirect(url_for('home'))
+
+    @app.post('/queue/<kind>')
+    def queue(kind):
+        bound = town()
+        args = {}
+        if kind == 'surf':
+            source = request.form.get('source', 'auto')
+            if source not in ('auto','wiki','nasa','moltbook','replies','bacon'):
+                abort(400)
+            topic = request.form.get('topic','').strip()
+            if len(topic) > 200:
+                abort(400, 'Topic is too long.')
+            args = {'source':source, 'topic':topic, 'resident':request.form.get('resident','')}
+        elif kind == 'molt':
+            action = request.form.get('action', '')
+            if action not in ('register','status','draft','publish','verify','resolve'):
+                abort(400)
+            arg = request.form.get('arg','').strip()
+            if len(arg) > 100 or '\n' in arg or '\r' in arg:
+                abort(400)
+            if action in ('publish','resolve') and request.form.get('confirm') != 'yes':
+                abort(400, 'Confirm the external action first.')
+            args = {'command': 'molt ' + action + (' ' + arg if arg else '')}
+        elif kind == 'step':
+            count = request.form.get('count',1,type=int)
+            if count not in (1,5,10):
+                abort(400)
+            args = {'count':count}
+        else:
+            abort(404)
+        with bound.transaction() as db:
+            pending = db.execute("SELECT count(*) FROM commands WHERE owner_id=? AND state IN ('pending','running')", (g.user['id'],)).fetchone()[0]
+            if pending >= 3:
+                abort(429, 'Wait for your queued actions to finish.')
+            if kind == 'surf':
+                if not bound.settings(db)['internet']:
+                    abort(400, 'Turn on outside reading in Town controls first.')
+                if not any(l.id == args['resident'] and l.alive for l in bound.read(db).lonks):
+                    abort(404)
+            if kind == 'step' and not bound.settings(db)['paused']:
+                abort(400, 'Pause your world before advancing it manually.')
+            db.execute('INSERT INTO commands(owner_id,kind,args) VALUES(?,?,?)', (g.user['id'],kind,json.dumps(args)))
+        flash('Queued. The result will appear in your live activity panel.')
+        return redirect(url_for('home'))
+
+    @app.get('/activity')
+    def activity():
+        bound = town()
+        with contextlib.closing(bound.connect()) as db:
+            row = db.execute('SELECT revision,last_tick FROM towns WHERE owner_id=?', (g.user['id'],)).fetchone()
+            logs = db.execute('SELECT id,tick,text FROM activity WHERE owner_id=? ORDER BY id DESC LIMIT 15', (g.user['id'],)).fetchall()[::-1]
+            count = db.execute("SELECT count(*) FROM commands WHERE owner_id=? AND state IN ('pending','running')", (g.user['id'],)).fetchone()[0]
+            return jsonify(tick=bound.read(db).tick, revision=row['revision'], last_tick=row['last_tick'],
+                           pending=count, settings=bound.settings(db), logs=[dict(x) for x in logs])
+
+    @app.post('/password')
+    def password():
+        bound = town()
+        old, new = request.form.get('current',''), request.form.get('new','')
+        if not 12 <= len(new) <= 128 or new != request.form.get('confirm'):
+            abort(400, 'New passwords must match and have 12–128 characters.')
+        if not limit('password:' + g.user['id'], 10, 300):
+            abort(429)
+        with bound.transaction() as db:
+            row = db.execute('SELECT password FROM users WHERE id=?',(g.user['id'],)).fetchone()
+            if not check_password_hash(row[0],old):
+                abort(400, 'Current local password not recognized.')
+            db.execute('UPDATE users SET password=? WHERE id=?',(generate_password_hash(new),g.user['id']))
+        flash('Your local Lonk-Space password was changed.')
         return redirect(url_for('home'))
 
     @app.errorhandler(400)

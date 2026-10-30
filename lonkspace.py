@@ -6,6 +6,31 @@ import re
 import uuid
 from collections import defaultdict
 
+# Route simulation narration per request/worker without redirecting global stdout.
+import builtins
+import contextlib
+import contextvars
+import io
+_output = contextvars.ContextVar('lonk_output', default=None)
+
+
+def print(*args, **kwargs):
+    sink = _output.get()
+    if sink is not None and 'file' not in kwargs:
+        kwargs['file'] = sink
+    builtins.print(*args, **kwargs)
+
+
+@contextlib.contextmanager
+def capture_output():
+    buffer = io.StringIO()
+    token = _output.set(buffer)
+    try:
+        yield buffer
+    finally:
+        _output.reset(token)
+
+
 # ============================================================
 # GLOBAL ENGINE CONFIGURATION
 # ============================================================

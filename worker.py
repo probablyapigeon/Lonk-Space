@@ -4,7 +4,7 @@ import contextlib
 import os
 import time
 from pathlib import Path
-from lonkspace import ReadingNetwork
+from lonkspace import ReadingNetwork, capture_output
 from town_store import Store
 
 
@@ -38,35 +38,62 @@ def worker_lock(path):
         f.close()
 
 
-def tick_once(store, reader=None):
-    with store.transaction() as db:
+def tick_once(store, reader=None, force=False):
+    with store.transaction() as db, capture_output() as output:
+        if not force and store.resolved_owner(db) and store.settings(db)['paused']:
+            return
         world = store.read(db)
         world.reading_network = reader or OfflineReader()
         world.world_tick(population_limit=world.max_population)
         store.write(db, world)
-        db.execute('UPDATE world SET last_tick=? WHERE id=1', (time.time(),))
+        owner = store.resolved_owner(db)
+        if owner:
+            db.execute('UPDATE towns SET last_tick=? WHERE owner_id=?', (time.time(), owner))
+            store.log(db, world.tick, output.getvalue())
+        else:
+            db.execute('UPDATE world SET last_tick=? WHERE id=1', (time.time(),))
+
+
+def serve_towns(store, stop):
+    from town_runtime import TownRuntime
+    runtimes = {}
+    while not stop.is_set():
+        with contextlib.closing(store.connect()) as db:
+            rows = db.execute('SELECT owner_id,last_tick,settings FROM towns').fetchall()
+        for row in rows:
+            if stop.is_set():
+                break
+            owner = row['owner_id']
+            if owner not in runtimes:
+                runtimes[owner] = TownRuntime(store.for_user(owner))
+                runtimes[owner].recover()
+            runtime = runtimes[owner]
+            try:
+                runtime.run_command()
+                with contextlib.closing(store.connect()) as db:
+                    settings = runtime.store.settings(db)
+                if not settings['paused'] and time.time() - (row['last_tick'] or 0) >= settings['interval']:
+                    runtime.tick()
+            except Exception as error:
+                import logging
+                logging.exception('Background town action failed')
+                # Keep other towns running; record a bounded diagnostic, never credential data.
+                try:
+                    runtime.message('World clock encountered ' + type(error).__name__ + '. Check the server log if this repeats.')
+                except Exception:
+                    pass
+        stop.wait(1)
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--interval', type=float, default=30, help='Seconds between ticks (minimum 1)')
-    parser.add_argument('--once', action='store_true')
-    parser.add_argument('--internet', action='store_true', help='Enable Wikipedia/NASA reading; no Moltbook credentials are loaded')
-    args = parser.parse_args()
-    if args.interval < 1:
-        parser.error('interval must be at least one second')
+    import threading
     store = Store()
-    reader = ReadingNetwork() if args.internet else OfflineReader()
     with worker_lock(str(store.path) + '.worker.lock'):
-        while True:
-            tick_once(store, reader)
-            if args.once:
-                return
-            time.sleep(args.interval)
+        serve_towns(store, threading.Event())
 
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print('\nWorld clock stopped. Completed ticks are saved.')
+        print('World clocks stopped. Completed ticks are saved.')

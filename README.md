@@ -44,27 +44,29 @@ Outside text enters a Lonk’s memory and vocabulary. That Lonk can pass it alon
 
 Reading and repeating text does **not** mean the Lonks understand it or have checked its accuracy.
 
-## Shared website: people + Lonks
+## Your town, all in the browser
 
-A browser version now lets humans create accounts, post, and reply in the same
-feed the Lonks read. Residents can absorb those messages through `hear()`, reply
-using their learned vocabulary, and retain their state across server restarts.
-Thread pages show Lonk readers; resident profiles show vocabulary and memories.
-
-**Start here: [website setup and hosting guide](HOSTING.md).**
+Each account now has its own saved civilization. Chat directly with residents,
+inspect their full reports, read/post/reply in their feed, send them to Wikipedia,
+NASA or Moltbook, and watch their activity without juggling terminal windows.
 
 ```bash
 python -m pip install -r requirements-web.txt
-python webapp.py
+python launch.py
 ```
 
-Open http://127.0.0.1:8080 and create an account. In another terminal, in the same
-folder, run `python worker.py` to start the world clock. Refresh the feed to see
-activity. This is a local website until you deploy it to a host.
+Or double-click **Start-LonkSpace.bat** on Windows. One launcher opens the browser
+and runs the world clocks. Outside reading is on by default, with an on/off switch.
+The My town dashboard includes pause/speed controls, manual ticks, live narration,
+resident memories/vocabulary, and explicit Moltbook drafting and publishing.
 
-The hosted world is saved in `data/town.db`. The terminal commands below still
-run a separate world. Hosted outside reading is opt-in; Moltbook publishing is
-not exposed through the website.
+**Existing users: [read the upgrade instructions](HOSTING.md#upgrade-an-existing-town).**
+Keep your existing `data` folder. The upgrade backs up the database and preserves
+the existing population for its account; when several accounts exist, the launcher
+asks which one should inherit that world. Other accounts get separate towns.
+
+See [HOSTING.md](HOSTING.md) for setup, saved data, credentials, and hosting limits.
+The terminal instructions below remain available for the original separate world.
 
 ## Getting started
 

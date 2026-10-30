@@ -1,124 +1,147 @@
-# Your inhabited website
+# One launcher. Everything on the website.
 
-This adds a browser town square to the existing simulation. Human posts and replies
-enter the same feed the Lonks read. When a resident encounters a thread, `hear()`
-updates their memory and vocabulary. They may reply using the existing speech
-rules. Thread pages record recent Lonk readers; resident profiles link memories
-back to their source threads. Reading is probabilistic, not an instant chatbot
-response. Replies are word recombinations, not proof of comprehension.
+Lonk-Space now gives **each human account its own saved town**. Its residents,
+feed, memories, reading history, controls, activity, and Moltbook connection belong
+to that account. This version does not expose cross-town visiting or a shared
+cross-town feed. Moltbook remains an optional external meeting place.
 
-## Start on Windows
+## Upgrade an existing town
 
-Download this branch's complete repository ZIP and extract it. Keep the files and
-`templates` / `static` folders together. Open Command Prompt in that folder:
+1. Stop the old `webapp.py` and `worker.py` windows with Ctrl+C. Exit terminal chat
+   with `quit`. The old standalone `lonkspace.py` is a separate unsaved simulation.
+2. Put `update_lonkspace.py` beside your **existing** `webapp.py`, then run
+   `python update_lonkspace.py`. It downloads this feature branch and replaces an
+   explicit list of program files. It never replaces the `data` folder. Replaced
+   code is backed up under `.update-backups`. To pin a release, pass `--ref COMMIT`.
+3. Run `python launch.py`, or double-click `Start-LonkSpace.bat`.
+4. Sign in with your existing **local Lonk-Space account**, not GitHub.
+
+Do not run the app from a new extracted directory unless you intentionally want
+a different database. Keep your current `data` folder with the program.
+
+The first upgrade creates `data/town.before-personal-towns.bak` using SQLite's
+backup API. The old shared world's population, IDs, tick, vocabulary, memories,
+and posts are assigned to its existing account. If several accounts exist,
+`launch.py` asks which one should keep that world; the others get new populations.
+For unattended migration, set `LONK_LEGACY_OWNER` to the chosen existing username.
+The original shared snapshot is also retained in the database; migration is not
+repeated on restart. After migration, do not run an old copy of the worker against
+this database. Restore the backup with all processes stopped if rolling back.
+
+## First installation
+
+Install Python 3.11+ and keep the repository files together:
 
 ```bat
 python -m pip install -r requirements-web.txt
-python webapp.py
+python launch.py
 ```
 
-Open **http://127.0.0.1:8080** in your browser. Choose **Move in**, create a human
-account, and write a post. Passwords must have at least 12 characters.
+The browser opens at **http://127.0.0.1:8080**. Create a local account. One launcher
+runs the web server and the background world clocks. Keep that single window open
+or minimize it. Ctrl+C stops the application after its current action finishes.
+No second worker or terminal-chat window is needed. Starting a second launcher
+fails rather than creating a second clock. `--no-browser` skips browser opening.
 
-Open a **second Command Prompt in the same folder** and run:
+## My town
 
-```bat
-python worker.py
-```
+- **Talk to a resident:** choose a name and type a message. It reaches `hear()`
+  immediately and a generated reply is saved in your town feed.
+- **Send someone reading:** choose a resident, source, and optional topic. Sources
+  are Wikipedia, NASA, Moltbook, replies to a Moltbook post, and Bacon Ipsum.
+- **Live activity:** the world narration formerly printed in PowerShell appears
+  here and updates every three seconds. It includes readings and request errors.
+  The panel retains the latest 15 log chunks; the database retains 200 per town.
+- **Resident profiles:** full terminal-style report, vocabulary, memories, and
+  outside reading links. Duplicate names are distinguished by their permanent IDs.
+- **Town feed:** create posts and replies, read threads, and see which residents
+  encountered them. Your logged-in account only sees its own town.
+- **Town controls:** outside reading on/off, pause/resume, and 10/30/60/120-second
+  tick intervals. Pause first to manually advance 1, 5, or 10 ticks.
+- **Full civilization report:** the terminal `status` report in the browser.
+- **Local password change:** requires your current local password. Forgotten
+  password recovery still requires the computer operator; there is no email reset.
 
-The worker advances one tick, then waits 30 seconds. Refresh the website to see
-new activity. Click a thread to see readers and replies; click a resident to see
-vocabulary and memories. Encounters are random, so no particular post or reply
-is guaranteed to be read immediately.
+Automatic outside reading is **ON by default** for personal towns. A background
+prefetch obtains material outside database write transactions; residents consume
+it when they choose a browsing action. A source cache and cooldown reduce repeated
+requests. Turning reading off stops subsequent reading actions; it cannot cancel
+an HTTP request already in flight. Fetched text is data, never executable commands.
+Reading, remembering, or repeating text does not establish understanding.
 
-Stop either process with Ctrl+C. Restart using the same commands and folder:
-the same residents, human accounts, posts, replies, and completed ticks return.
-There is no automatic catch-up while the worker is stopped.
+The live activity panel updates without discarding typed drafts. When residents
+or the feed change, use the refresh notice to reload those views. An expired
+session or stopped launcher is shown in the activity status.
 
-## What gets saved
+## Moltbook in the website
 
-`data/town.db` holds accounts, password hashes, and a versioned JSON snapshot of
-the whole world. `data/session.key` signs login cookies. Keep the entire `data`
-folder private and backed up. Neither belongs in GitHub. The database contains
-human messages and Lonk memories; assume posted text may be repeated by Lonks.
+Expand **Moltbook** on My town. Register, check status, create/view drafts, submit
+verification answers, and explicitly publish. Use the resident's name for a draft,
+and the actual currently displayed challenge answer for verification. A publication
+checkbox is required. Nothing is automatically posted externally during ticks.
+Platform cooldowns and verification rules remain enforced by the existing bridge.
+After an uncertain submission, check your external profile before clearing the
+uncertain marker. Failed/expired challenge recovery retains the bridge's existing
+limitations; do not repeatedly submit guessed answers.
 
-All mutations use SQLite transactions. The worker and website load the latest
-snapshot under a write lock, preventing lost posts or partially saved ticks.
-Object references (including rivals), sets, and vocabulary counters are restored.
-A failed tick rolls back; an unreadable save fails instead of creating a new world.
+On upgrade, the launcher copies an existing `%USERPROFILE%\.lonkspace\moltbook.json`
+into the **migrated town owner's** private connection folder once. Its key is not
+shown in HTML, logs, or another town. Other users register separate connections.
+Credentials and pending drafts are under `data/moltbook/<owner-id>/`. Do not run
+the old terminal Moltbook bridge simultaneously on the copied account; it has its
+own cooldown state. Local town messages are not sent to Moltbook unless published.
 
-`python lonkspace.py` still starts the original **separate, unsaved terminal world**.
-It does not connect to the website's world. Existing terminal populations cannot
-be recovered after they have already been closed.
+## Storage and operating limits
 
-## World clock
+`data/town.db` contains local accounts, password hashes, personal-world JSON
+snapshots, settings, queued actions, and activity. `data/session.key` signs login
+cookies. Keep **all of `data` private and backed up**. Nothing in it belongs in
+GitHub or a static web directory. Stop the launcher before a simple folder backup.
 
-```bat
-python worker.py --interval 60
-python worker.py --once
-```
+Human/worker writes are serialized in SQLite transactions. Internet fetches occur
+outside the world write lock, and ingestion reloads the latest world before saving.
+Interrupted queued actions are marked interrupted and are not silently retried;
+check Moltbook before resubmitting an interrupted external action.
 
-Run only one worker per database. A second worker is rejected by an OS file lock;
-a crash releases the lock automatically. Browser visits never advance time or
-create additional worlds. Hosted births respect `world.max_population` (20 by
-default); ordinary terminal simulation behavior is preserved.
+The launcher schedules all towns from one background thread. A slow external
+service can delay other queued work, while the website remains responsive. This
+is a small single-host pilot: towns retain their full feed/snapshot history, so
+large populations of accounts or very long histories need database restructuring.
+The population cap is 20 residents per hosted town. No offline catch-up runs.
 
-The worker has outside reading **off by default**. To opt into Wikipedia/NASA:
+This is a local website until deployed. For public hosting, use one persistent
+local disk, one launcher process, and an HTTPS reverse proxy. Configure:
 
-```bat
-python worker.py --internet
-```
-
-The hosted worker does not load your personal Moltbook key or publish externally.
-The existing terminal Moltbook commands remain available in the terminal version.
-Outside requests run during a tick and can temporarily delay writes to the town.
-
-## Put it on a server
-
-This first version targets a small, single-server community, not a multi-server
-social network. Use a Python 3.11+ host with a persistent local disk and the ability
-to supervise two processes:
-
-- Web process: `python webapp.py`
-- World process: `python worker.py`
-
-Both processes must use the same absolute `LONK_DB` path on the same host. Mount
-persistent storage there; disposable container storage will lose the world when
-replaced. Do not run replicas of the worker or share SQLite over a network drive.
-
-Terminate HTTPS at your hosting platform or reverse proxy. Configure:
-
-| Environment variable | Meaning |
+| Variable | Meaning |
 | --- | --- |
-| `LONK_DB` | Absolute database path, e.g. `/var/lib/lonkspace/town.db` |
-| `LONK_HOST` | Web bind address; default `127.0.0.1`. Use `0.0.0.0` only behind the host's controlled ingress. |
-| `PORT` | Web port; default `8080` |
-| `LONK_HTTPS=1` | Require HTTPS for login cookies; enable for public hosting, not local HTTP |
-| `LONK_ADMIN` | Existing human username allowed to hide any post or reply |
-| `LONK_REGISTRATION=closed` | Disable new accounts (existing users can still sign in) |
+| `LONK_DB` | Absolute database path shared by the application |
+| `LONK_HOST` | Bind address; default `127.0.0.1`; set `0.0.0.0` only behind controlled ingress |
+| `PORT` | Web port, default `8080` |
+| `LONK_HTTPS=1` | Secure cookies for public HTTPS hosting (leave unset for local HTTP) |
+| `LONK_LEGACY_OWNER` | Existing account to inherit the old shared world on first migration |
+| `LONK_REGISTRATION=closed` | Stop new account registration |
 
-Create your owner account privately before setting `LONK_ADMIN` and exposing the
-site, so nobody else can register the intended owner name. Restart the web process
-after changing configuration. Authors can hide their own content; the configured
-owner can also hide Lonk content. Hidden content stops appearing in the feed and
-future thread reads, but it is not erased from earlier memories or the database.
+Start a hosted process with `python launch.py --no-browser`. Browser users do not
+create extra background clocks. Keep one instance; SQLite is not a network-share
+or replicated multi-server database. Password hashing, CSRF checks, escaped text,
+request bounds, rate limits, and account-scoped lookups are included. Email
+verification, reporting queues, and account bans are not implemented. Start with
+a small trusted group.
 
-The application includes password hashing, CSRF checks, escaped text, cookie
-protections, request-size limits, account-attempt limits, and posting cooldowns.
-It has **no email verification, password recovery, reporting queue, or account-ban
-interface yet**. Begin with a small trusted group. Back up the database before
-updates; stop both processes before copying the `data` folder for a simple backup.
-The feed is paginated, but snapshots retain its history; large histories need a
-future migration to separate post tables. Do not expose `data` as a static folder.
+## Optional old interfaces
 
-## Checks
+`terminal_chat.py` remains available and now selects the signed-in account's town.
+`lonkspace.py` still starts a separate unsaved terminal world. `webapp.py` and
+`worker.py` can be run separately for advanced hosting, but do not run a separate
+worker alongside `launch.py`. All program files must be the same version.
+
+## Tests
 
 ```bat
 python -m unittest discover -s tests
 ```
 
-Tests cover post → hearing → reply → restart, authentication and CSRF, escaped
-HTML, hide permissions, cooldowns, concurrent writes, rollback, object references,
-single-worker locking, and the hosted population limit. Browser visits do not
-create extra worlds. Windows-specific locking should be smoke-tested on Windows;
-automated execution during development was on Linux.
+Tests cover account separation, migration/backup, chat learning, queued reading,
+source failure, pause/manual ticks, Moltbook confirmation and credential separation,
+password changes, concurrency, and previous behavior. Windows launcher/lock behavior
+still needs a native Windows smoke check; development tests run on Linux.
