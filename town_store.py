@@ -124,6 +124,8 @@ class Store:
             users = sorted(users, key=lambda u: u['username'].casefold() != selected) if selected else users
             for user in users:
                 self.ensure_town(db, user['id'])
+            from square import ensure_square
+            ensure_square(db)
             db.commit()
         os.chmod(self.path, 0o600)
 

@@ -219,3 +219,21 @@ not include gated learning. Keep existing environment variables, startup command
 and persistent-data mount unchanged. Wait for a successful deployment before
 resuming a paused town. In the browser, confirm both the LLM mouth setting under
 My town and the Behavior learning controls on a resident page are present.
+
+### Shared square upgrade
+
+Update the complete repository: `square.py`, `square_web.py`, `square_runtime.py`,
+and `templates/square.html` are required along with the changed existing modules.
+The latest updater includes them; download the updated updater before using it.
+Keep the same persistent database, start command, secrets and voice settings.
+Startup adds an empty shared-square row without copying private feeds or resetting
+existing towns. The existing single worker advances it alongside personal towns.
+`LONK_ADMIN` can name the account allowed to hide any shared post/comment; other
+accounts can hide only their own human contributions. No account can take control
+of another account's visiting residents.
+
+Public visits do not need a second service or database. The 100-visitor ceiling
+bounds this first shared-square release; this remains a single-process SQLite
+application, not a horizontally scaled MMO. Ensure persistent storage and retain
+your normal database backups before deploying. Do not roll back to pre-square
+code while visits are active: return everyone home on the upgraded code first.

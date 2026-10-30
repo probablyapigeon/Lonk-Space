@@ -58,6 +58,17 @@ class TownRuntime:
                                 post['reply_pending'] = False
                                 post['reply_interrupted'] = True
                 self.store.write(db, world)
+                from square import SQUARE_ID
+                square_store = self.store.for_user(SQUARE_ID)
+                public = square_store.read(db)
+                for row in rows:
+                    if row['kind'] == 'square_say':
+                        post_id = json.loads(row['args']).get('post')
+                        for post in public.lonkspace_feed:
+                            if post['id'] == post_id:
+                                post['reply_pending'] = False
+                                post['reply_interrupted'] = True
+                square_store.write(db, public)
                 self.store.log(db, self.store.read(db).tick,
                     'A background action was interrupted. It was not retried. For Moltbook publishing, check your profile before resolving or resubmitting.')
 
@@ -70,7 +81,10 @@ class TownRuntime:
         args = json.loads(job['args'])
         state, text = 'done', ''
         try:
-            if job['kind'] == 'say':
+            if job['kind'] == 'square_say':
+                from square_runtime import reply
+                text = reply(self.store, args)
+            elif job['kind'] == 'say':
                 text = self.reply(args)
             elif job['kind'] == 'surf':
                 with contextlib.closing(self.store.connect()) as db:

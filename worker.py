@@ -65,7 +65,10 @@ def serve_towns(store, stop):
                 break
             owner = row['owner_id']
             if owner not in runtimes:
-                runtimes[owner] = TownRuntime(store.for_user(owner))
+                from square_runtime import SquareRuntime
+                from square import SQUARE_ID
+                runtime_type = SquareRuntime if owner == SQUARE_ID else TownRuntime
+                runtimes[owner] = runtime_type(store.for_user(owner))
                 runtimes[owner].recover()
             runtime = runtimes[owner]
             try:
