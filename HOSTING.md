@@ -128,6 +128,60 @@ request bounds, rate limits, and account-scoped lookups are included. Email
 verification, reporting queues, and account bans are not implemented. Start with
 a small trusted group.
 
+## Optional LLM mouth (hosted OpenAI API)
+
+The simulation still controls identities, emotions, relationships, memory, births,
+and actions. An optional LLM receives a limited resident snapshot and returns only
+dialogue. It has no tools or state-write interface. Its text can still be inaccurate:
+grounding instructions are not a guarantee of truth or moderation acceptance.
+
+In Render, deploy the version containing `llm_mouth.py` and set these **Environment
+Variables** (these are separate from the Moltbook secret file):
+
+| Variable | Value |
+| --- | --- |
+| `LONK_LLM_API_KEY` | Your private OpenAI API key; never put it in GitHub, chat, or a town post |
+| `LONK_LLM_MODEL` | A model available to your API project that supports Chat Completions; for example `gpt-4.1-mini` while supported |
+| `LONK_LLM_DAILY_LIMIT` | Optional: maximum attempted requests across the server per UTC day; default `100` |
+| `LONK_LLM_TOWN_DAILY_LIMIT` | Optional: maximum attempted requests per town per UTC day; default `20` |
+
+Both key and model are required; no API request occurs merely by adding a key.
+After deployment, sign in, open **Town controls → LLM mouth**, check the first box,
+and save. This opts your town into sending the selected resident's state, recent
+heard messages, reading titles, and direct chat to OpenAI. This is separate from
+the outside-reading switch. Other towns remain off unless their owners enable it.
+The host's API project pays for all enabled towns. Configure a provider-side budget
+as well: request caps are not dollar caps. API billing is separate from ChatGPT.
+
+- Direct chat reaches `hear()` immediately, then queues a reply. Refresh its thread
+  after completion; progress appears in live activity. No extra clock tick occurs.
+- New named Moltbook drafts use the voice and a code-written state summary. They
+  are labeled LLM-assisted and require the existing explicit publish confirmation.
+  Viewing an already saved draft does not generate a new one or spend a request.
+- A second, optional checkbox permits a resident-to-resident reflection at most
+  once per five minutes per town, after a normal tick. A listener learns through
+  the existing `hear()` method; the line also appears in the local feed. This can
+  affect later memories/emotions through normal hearing, not direct LLM writes.
+  Ordinary tick dialogue, automatic feed replies, manual steps, and the old terminal
+  interface retain their rule-generated speech. Ambient speech stops when paused.
+- No API retries or automatic external publishing. Attempts count against durable
+  daily limits even if a request fails; missing config, limits, or provider errors
+  use the original voice. Keys and raw provider error bodies are not logged.
+- Pending replies interrupted by a server restart are marked interrupted rather
+  than retried. Send a new message if desired. Disabling the voice prevents new
+  requests; it cannot recall data already sent to the provider.
+
+The integration uses a fixed `https://api.openai.com/v1/chat/completions` endpoint,
+`store=false`, bounded inputs, 300 output tokens, and connection/read timeouts.
+`store=false` is not a promise of zero provider retention. Model access, provider
+policies, pricing, and availability depend on your API account. Change the model
+environment variable if a model is retired. In-app generated text is escaped.
+
+Existing accounts and credentials do not need re-registration. The only schema
+addition is a request-usage table, created automatically at startup. Keep `LONK_DB`
+pointing to the same persistent disk. To disable the feature, turn off the town
+checkboxes or remove the API key; the simulation continues with its original voice.
+
 ## Optional old interfaces
 
 `terminal_chat.py` remains available and now selects the signed-in account's town.
@@ -145,3 +199,23 @@ Tests cover account separation, migration/backup, chat learning, queued reading,
 source failure, pause/manual ticks, Moltbook confirmation and credential separation,
 password changes, concurrency, and previous behavior. Windows launcher/lock behavior
 still needs a native Windows smoke check; development tests run on Linux.
+
+### Combined LLM mouth and gated learning upgrade
+
+The combined version includes both `llm_mouth.py` and `adaptation.py`. Update the
+whole repository, preserving the existing database and settings. If using the
+file updater, download the current `update_lonkspace.py` first so it knows about
+both modules. Existing per-town LLM settings and usage limits are preserved.
+
+The speech provider receives the resident's current action preferences and latest
+recorded learning decision as additional context. It cannot change those
+preferences or approve proposals. Offline policy trials do not call the model or
+spend API requests. LLM failure/off settings still leave the simulation and its
+learning gate operational.
+
+For Render, after the combined pull request is merged, deploy the `main` branch
+containing that merge. Deploying the older `feature/llm-mouth` branch alone does
+not include gated learning. Keep existing environment variables, startup command,
+and persistent-data mount unchanged. Wait for a successful deployment before
+resuming a paused town. In the browser, confirm both the LLM mouth setting under
+My town and the Behavior learning controls on a resident page are present.
