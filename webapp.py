@@ -287,6 +287,11 @@ def create_app(config=None):
             if action in ('publish','resolve') and request.form.get('confirm') != 'yes':
                 abort(400, 'Confirm the external action first.')
             args = {'command': 'molt ' + action + (' ' + arg if arg else '')}
+        elif kind == 'policy':
+            action = request.form.get('action', '')
+            if action not in ('reflect', 'rollback', 'resume'):
+                abort(400)
+            args = {'action': action, 'resident': request.form.get('resident', '')}
         elif kind == 'step':
             count = request.form.get('count',1,type=int)
             if count not in (1,5,10):
@@ -298,6 +303,8 @@ def create_app(config=None):
             pending = db.execute("SELECT count(*) FROM commands WHERE owner_id=? AND state IN ('pending','running')", (g.user['id'],)).fetchone()[0]
             if pending >= 3:
                 abort(429, 'Wait for your queued actions to finish.')
+            if kind == 'policy' and not any(l.id == args['resident'] and l.alive for l in bound.read(db).lonks):
+                abort(404)
             if kind == 'surf':
                 if not bound.settings(db)['internet']:
                     abort(400, 'Turn on outside reading in Town controls first.')
