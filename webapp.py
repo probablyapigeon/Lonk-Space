@@ -14,6 +14,7 @@ from flask import Flask, abort, flash, redirect, render_template, request, sessi
 from werkzeug.security import check_password_hash, generate_password_hash
 from town_store import Store
 from lonkspace import capture_output
+from llm_mouth import configured as mouth_configured
 
 
 def create_app(config=None):
@@ -107,6 +108,7 @@ def create_app(config=None):
                                admin=bool(user), posts=posts, page_number=page_number,
                                has_next=page_number*20 < total, total_posts=total,
                                settings=settings, logs=logs, pending=pending, status_report=report_text,
+                               mouth_configured=mouth_configured(),
                                worker_active=bool(last_tick and time.time()-last_tick < 180),
                                **extra)
 
@@ -245,7 +247,17 @@ def create_app(config=None):
             if not lonk:
                 abort(404, 'Choose a current resident from your town.')
             post = world.add_post(user['username'], f'A conversation with {lonk.name}'[:160], body, 'human', user['id'])
-            world.read_post(lonk, post, reply=True)
+            use_mouth = bound.settings(db).get('llm') and mouth_configured()
+            if use_mouth:
+                pending = db.execute("SELECT count(*) FROM commands WHERE owner_id=? AND state IN ('pending','running')", (g.user['id'],)).fetchone()[0]
+                if pending >= 3:
+                    abort(429, 'Wait for your queued actions to finish.')
+                world.read_post(lonk, post, reply=False)
+                post['reply_pending'] = True
+                db.execute('INSERT INTO commands(owner_id,kind,args) VALUES(?,?,?)',
+                    (g.user['id'], 'say', json.dumps({'resident':lonk.id, 'post':post['id']})))
+            else:
+                world.read_post(lonk, post, reply=True)
             bound.write(db, world)
             bound.log(db, world.tick, output.getvalue())
             db.execute('UPDATE users SET last_post=? WHERE id=?', (time.time(),user['id']))
@@ -259,7 +271,9 @@ def create_app(config=None):
             abort(400, 'Choose a supported clock speed.')
         with bound.transaction() as db:
             values = {'internet':request.form.get('internet') == 'on',
-                      'paused':request.form.get('paused') == 'on', 'interval':interval}
+                      'paused':request.form.get('paused') == 'on', 'interval':interval,
+                      'llm':request.form.get('llm') == 'on',
+                      'llm_ambient':request.form.get('llm_ambient') == 'on'}
             db.execute('UPDATE towns SET settings=? WHERE owner_id=?', (json.dumps(values),g.user['id']))
             bound.log(db, bound.read(db).tick, 'Town settings saved. Outside reading ' + ('enabled.' if values['internet'] else 'disabled.'))
         flash('Settings saved for your town.')

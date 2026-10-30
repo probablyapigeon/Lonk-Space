@@ -5,6 +5,7 @@ import random
 import time
 import requests
 from lonkspace import ReadingNetwork, MoltbookBridge, capture_output
+from llm_mouth import Mouth, Speech
 
 
 class CachedReader(ReadingNetwork):
@@ -37,6 +38,7 @@ class TownRuntime:
         folder = store.path.parent / 'moltbook' / store.owner_id
         self.bridge = MoltbookBridge(folder)
         self.reader = CachedReader(self.bridge)
+        self.mouth = Mouth(store)
 
     def message(self, text):
         with self.store.transaction() as db:
@@ -44,9 +46,18 @@ class TownRuntime:
 
     def recover(self):
         with self.store.transaction() as db:
-            rows = db.execute("SELECT id FROM commands WHERE owner_id=? AND state='running'", (self.store.owner_id,)).fetchall()
+            rows = db.execute("SELECT id,kind,args FROM commands WHERE owner_id=? AND state='running'", (self.store.owner_id,)).fetchall()
             if rows:
                 db.execute("UPDATE commands SET state='interrupted' WHERE owner_id=? AND state='running'", (self.store.owner_id,))
+                world = self.store.read(db)
+                for row in rows:
+                    if row['kind'] == 'say':
+                        post_id = json.loads(row['args']).get('post')
+                        for post in world.lonkspace_feed:
+                            if post['id'] == post_id:
+                                post['reply_pending'] = False
+                                post['reply_interrupted'] = True
+                self.store.write(db, world)
                 self.store.log(db, self.store.read(db).tick,
                     'A background action was interrupted. It was not retried. For Moltbook publishing, check your profile before resolving or resubmitting.')
 
@@ -59,7 +70,9 @@ class TownRuntime:
         args = json.loads(job['args'])
         state, text = 'done', ''
         try:
-            if job['kind'] == 'surf':
+            if job['kind'] == 'say':
+                text = self.reply(args)
+            elif job['kind'] == 'surf':
                 with contextlib.closing(self.store.connect()) as db:
                     if not self.store.settings(db)['internet']:
                         raise ValueError('Outside reading is off. Enable it in My town first.')
@@ -87,9 +100,15 @@ class TownRuntime:
                     tick_once(self.store, self.reader if settings['internet'] else OfflineReader(), force=True)
                 text = 'Manual steps completed.'
             elif job['kind'] == 'molt':
-                with capture_output() as output:
-                    self.bridge.command(args['command'], self.store.load())
-                text = output.getvalue()
+                parts = args['command'].split(maxsplit=2)
+                with contextlib.closing(self.store.connect()) as db:
+                    use_mouth = self.store.settings(db).get('llm')
+                if use_mouth and len(parts) == 3 and parts[1] == 'draft':
+                    text = self.draft(parts[2])
+                else:
+                    with capture_output() as output:
+                        self.bridge.command(args['command'], self.store.load())
+                    text = output.getvalue()
             else:
                 raise ValueError('Unknown queued action.')
         except (ValueError, KeyError, OSError) as error:
@@ -98,6 +117,83 @@ class TownRuntime:
             db.execute('UPDATE commands SET state=? WHERE id=?', (state, job['id']))
             self.store.log(db, self.store.read(db).tick, text or 'Action completed.')
             db.execute("DELETE FROM commands WHERE owner_id=? AND state!='pending' AND id NOT IN (SELECT id FROM commands WHERE owner_id=? ORDER BY id DESC LIMIT 100)", (self.store.owner_id,self.store.owner_id))
+
+    def reply(self, args):
+        world = self.store.load()
+        lonk = next((l for l in world.lonks if l.id == args['resident'] and l.alive), None)
+        post = next((p for p in world.lonkspace_feed if p['id'] == args['post']), None)
+        if not post:
+            return 'Reply cancelled: thread no longer exists.'
+        speech = self.mouth.say(lonk, world, post['body']) if lonk and not post.get('hidden') else None
+        # Reload after the request: never overwrite intervening chat, ticks, or settings.
+        with self.store.transaction() as db:
+            current = self.store.read(db)
+            target = next((p for p in current.lonkspace_feed if p['id'] == args['post']), None)
+            resident = next((l for l in current.lonks if l.id == args['resident'] and l.alive), None)
+            if not target:
+                return 'Reply cancelled: thread no longer exists.'
+            target['reply_pending'] = False
+            if not speech or not resident or target.get('hidden'):
+                self.store.write(db, current)
+                return 'Reply cancelled: resident or visible thread is no longer available.'
+            if speech.engine == 'llm' and not self.store.settings(db).get('llm'):
+                from lonkspace import generate_speech
+                speech = Speech(generate_speech(lonk=resident), 'rules', 'LLM switched off; generated response discarded.')
+            comment = current.add_comment(target['id'], resident.name, speech.text, author_id=resident.id)
+            comment['speech_engine'] = speech.engine
+            comment['context_tick'] = world.tick
+            self.store.write(db, current)
+        return f'{resident.name} [{speech.engine}]: {speech.text}\n{speech.note}'
+
+    def draft(self, name):
+        world = self.store.load()
+        lonk = next((l for l in world.lonks if l.alive and l.name.casefold() == name.casefold()), None)
+        if not lonk:
+            raise ValueError('No living Lonk with that name.')
+        speech = self.mouth.say(lonk, world, purpose='dispatch for human review')
+        # Status facts are supplied by code, not invented by the language model.
+        content = (f'Simulated character: {lonk.name}\nFaction: {lonk.faction}\n'
+                   f'World tick: {world.tick}\nJob: {lonk.job}\n'
+                   f'Joy: {lonk.emotion["joy"]:.0f}/100; anxiety: {lonk.emotion["anxiety"]:.0f}/100\n\n'
+                   f'{speech.text}\n\n'
+                   + ('LLM-assisted dialogue grounded in a simulated Lonk state. ' if speech.engine == 'llm'
+                      else 'Rule-generated dialogue from a simulated Lonk. ')
+                   + 'Character speech may be inaccurate; this is not a factual report.')
+        self.bridge.data['draft'] = {'submolt_name':'general',
+            'title':f'{lonk.name}: town diary, tick {world.tick}', 'content':content}
+        self.bridge.save()
+        return ('DRAFT ONLY — destination: m/general\n' + self.bridge.data['draft']['title']
+                + '\n' + content + '\n' + speech.note
+                + '\nReview before explicitly publishing. Nothing was posted.')
+
+    def ambient(self):
+        if not self.mouth.ambient_due():
+            return
+        world = self.store.load()
+        living = [l for l in world.lonks if l.alive]
+        if not living:
+            return
+        lonk = random.choice(living)
+        speech = self.mouth.say(lonk, world, purpose='brief reflection to a fellow resident')
+        if speech.engine != 'llm':
+            self.message(speech.note)
+            return
+        with self.store.transaction() as db, capture_output() as output:
+            settings = self.store.settings(db)
+            if settings['paused'] or not settings.get('llm') or not settings.get('llm_ambient'):
+                return
+            current = self.store.read(db)
+            speaker = next((l for l in current.lonks if l.id == lonk.id and l.alive), None)
+            if not speaker:
+                return
+            listeners = [l for l in current.lonks if l.alive and l.id != speaker.id]
+            listener = random.choice(listeners) if listeners else None
+            speaker.speak(speech.text, target=listener)
+            post = current.add_post(speaker.name, f'{speaker.name} reflects', speech.text, author_id=speaker.id)
+            post['speech_engine'] = 'llm'
+            post['context_tick'] = world.tick
+            self.store.write(db, current)
+            self.store.log(db, current.tick, '[LLM voice]\n' + output.getvalue())
 
     def tick(self):
         with contextlib.closing(self.store.connect()) as db:
@@ -111,3 +207,4 @@ class TownRuntime:
                 self.message(str(error))
         from worker import tick_once, OfflineReader
         tick_once(self.store, self.reader if settings['internet'] else OfflineReader())
+        self.ambient()

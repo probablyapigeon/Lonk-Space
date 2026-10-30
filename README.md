@@ -198,3 +198,10 @@ Somewhere in that sequence, somebody finds an Angry Stick.
 **The moss is divine.  
 The forum is local.  
 The consequences are becoming everyone’s problem.**
+
+### Optional LLM mouth
+
+The simulation remains the brain. Enable an optional hosted OpenAI voice for
+direct chat, reviewed Moltbook drafts, and occasional resident conversations.
+It is off by default, uses bounded snapshots, has durable daily request limits,
+and falls back to the original voice. See [setup and privacy details](HOSTING.md#optional-llm-mouth-hosted-openai-api).
