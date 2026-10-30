@@ -75,6 +75,20 @@ class TownRuntime:
                     self.reader.read(lonk, source, args.get('topic', ''))
                     self.store.write(db, world)
                     text = output.getvalue()
+            elif job['kind'] == 'policy':
+                from adaptation import initialize, reflect, rollback
+                with self.store.transaction() as db:
+                    world = self.store.read(db)
+                    initialize(world)
+                    lonk = next((l for l in world.lonks if l.id == args['resident'] and l.alive), None)
+                    if lonk is None:
+                        raise ValueError('That resident is no longer alive.')
+                    if args['action'] == 'resume':
+                        lonk.policy_frozen = False
+                        text = 'Policy learning resumed.'
+                    else:
+                        text = (reflect if args['action'] == 'reflect' else rollback)(world, lonk)
+                    self.store.write(db, world)
             elif job['kind'] == 'step':
                 from worker import tick_once, OfflineReader
                 for _ in range(args['count']):

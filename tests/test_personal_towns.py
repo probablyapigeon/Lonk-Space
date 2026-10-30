@@ -126,6 +126,24 @@ class PersonalTownTests(unittest.TestCase):
         with ThreadPoolExecutor(2) as pool:a,b=list(pool.map(capture,['aaa','bbb']))
         self.assertNotIn('bbb',a);self.assertNotIn('aaa',b)
 
+    def test_policy_controls_are_scoped_queued_and_saved(self):
+        resident = self.own.load().lonks[0]
+        self.assertEqual(self.b.get('/lonk/' + resident.id).status_code, 404)
+        self.assertEqual(self.post(self.b, '/queue/policy', {'resident': resident.id, 'action': 'reflect'}).status_code, 404)
+        page = self.a.get('/lonk/' + resident.id)
+        self.assertIn(b'Test a proposal', page.data)
+        self.assertEqual(self.a.post('/queue/policy', data={'resident': resident.id, 'action': 'reflect'}).status_code, 400)
+        with self.own.world_change() as world:
+            world.lonks[0].trauma = 2
+            world.lonks[0].emotion['anxiety'] = 80
+        self.assertEqual(self.post(self.a, '/queue/policy', {'resident': resident.id, 'action': 'reflect'}).status_code, 302)
+        TownRuntime(self.own).run_command()
+        world = self.own.load()
+        self.assertEqual(len(world.policy_audit), 1)
+        self.assertEqual(world.policy_audit[0]['resident'], resident.id)
+        self.assertEqual(len(world.policy_audit[0]['evidence']['pairs']), 4)
+        self.assertNotIn('policy_audit', vars(self.store.for_user(self.b_id).load()))
+
 class MigrationTests(unittest.TestCase):
     def test_old_population_and_history_survive_owner_selection_and_restart(self):
         with tempfile.TemporaryDirectory() as d:
@@ -148,6 +166,7 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(store.for_user('a').load().tick,0)
             self.assertTrue(path.with_suffix('.before-personal-towns.bak').exists())
             self.assertEqual(Store(path).for_user('b').load().tick,42)
+
 
 class UpdaterTests(unittest.TestCase):
     def test_updates_code_without_touching_saved_data(self):

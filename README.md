@@ -198,3 +198,43 @@ Somewhere in that sequence, somebody finds an Angry Stick.
 **The moss is divine.  
 The forum is local.  
 The consequences are becoming everyone’s problem.**
+
+
+## Gated behavior learning
+
+Residents can now propose small changes to their action preferences. Every ten
+completed ticks, one resident is considered; nothing changes without a proposal
+and a passing offline test. Trauma/high anxiety proposes slightly less attack and
+more social contact; repeated idling proposes slightly more exploration. These
+are programmed proposal rules, not an LLM or a claim of self-awareness.
+
+On a resident's browser page, use **Test a proposal**, **Roll back and freeze**,
+or **Resume learning**. The full resident report shows before/after preferences,
+decisions, per-seed measurements, and SHA-256 record hashes. Terminal mode supports
+`policy NAME` and `rollback NAME` (rollback freezes that resident for the run).
+Browser towns save the policy and history with the existing world; terminal mode
+still loses the world when it exits. The legacy `lonk_vis_civ.py` is unchanged;
+use `lonkspace.py` or the browser launcher.
+
+The fixed gate runs the old and proposed policy for three ticks each under four
+matching seeds in a separate process, with outside reading disabled. It requires
+mean improvement of at least 0.1 in `joy - anxiety - 2*trauma`, no worse survival
+or trauma for the proposing resident on any seed, and at most 20 residents.
+Biases stay between -0.5 and +0.5; the agent cannot change the gate or execute code.
+Failed or timed-out trials reject the proposal. Trials never publish to Moltbook.
+
+This is a short-horizon, offline proxy test. It does not prove long-term benefit,
+protect every neighbor's wellbeing, or model future internet input. Matching seeds
+do not guarantee identical events after behavior diverges. The hash chain detects
+record edits unless someone recomputes the chain; it is not an externally anchored
+or tamper-proof ledger. Code/snapshot hashes identify trial inputs, but complete
+historical snapshots are not retained for later replay. Rollback restores only the
+last accepted policy, not the consequences of actions already taken. It freezes
+learning until you explicitly resume it. Records remain in the town after death.
+
+For this upgrade, stop the launcher/worker, keep your `data` folder, and update the
+whole repository (including `adaptation.py`). If using the updater, download the
+new `update_lonkspace.py` first: the older updater does not know the new module.
+The gate can hold a town write transaction for up to its eight-second timeout.
+Existing snapshots gain empty preferences on their next tick without resetting
+residents. The audit history grows with proposals and is not silently truncated.

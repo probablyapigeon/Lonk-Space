@@ -508,6 +508,8 @@ class Lonk:
         self.id = uuid.uuid4().hex
         self.name = name
         self.world = world
+        self.behavior_policy = {}
+        self.policy_frozen = False
         self.state = [0.5, 0.5, 0.2, 0.3, 0.1]
         self.dynamics = LonkDynamics()
 
@@ -597,7 +599,8 @@ class Lonk:
             self.personality["curiosity"]/50  # High curiosity triggers internet surfing
         ]
         
-        scores = [b+m for b,m in zip(base, mods)]
+        scores = [b + m + getattr(self, "behavior_policy", {}).get(action, 0)
+                  for action, b, m in zip(acts, base, mods)]
         
         # Use fallback option if all threshold parameters fail to resolve
         if all(scores[i] < self.theta(list(self.emotion.keys())[i if i < 4 else 0]) for i in range(len(acts)-1)):
@@ -1321,6 +1324,14 @@ class LonkWorld:
             print('Emotions: ' + ', '.join(f'{k}: {v:g}' for k, v in lonk.emotion.items()))
             print('Personality: ' + ', '.join(f'{k}: {v:g}' for k, v in lonk.personality.items()))
             print('Internal state: ' + ', '.join(f'{k}: {v:.3f}' for k, v in zip(('Psi', 'theta', 'A', 'V', 'P'), lonk.state)))
+            print('Behavior policy: ' + str(getattr(lonk, 'behavior_policy', {})))
+            print('Learning frozen: ' + str(getattr(lonk, 'policy_frozen', False)))
+            for entry in getattr(self, 'policy_audit', []):
+                if entry['resident'] == lonk.id:
+                    print(f"  Policy tick {entry['tick']}: {entry['decision']} — {entry['reason']}")
+                    print(f"    {entry['before']} -> {entry['after']} | SHA-256 {entry['hash']}")
+                    for seed, pair in zip(entry["evidence"].get("seeds", []), entry["evidence"].get("pairs", [])):
+                        print(f"    Trial {seed}: old {pair[0]} | proposed {pair[1]}")
             print('Actions: ' + ', '.join(f'{k}: {v}' for k, v in lonk.habits.items()))
             print('Inventory: ' + (', '.join(lonk.inventory) or 'None'))
             print(f'Religion: {lonk.religion["name"]} | Faith: {lonk.faith} | Known myths: {len(lonk.known_myths)}')
@@ -1345,6 +1356,9 @@ class LonkWorld:
                 print(f'  {item["source"]}: {item["title"]}\n    {item["source_url"]}')
 
     def world_tick(self, population_limit=None):
+        if not getattr(self, "policy_trials", False):
+            from adaptation import automatic
+            automatic(self)
         self.tick += 1
         print_header(f"🌍 WORLD TICK {self.tick}")
 
@@ -1647,6 +1661,7 @@ def main():
     print(f"  {Colors.YELLOW}inspect <name>{Colors.END} - Show Lonk details")
     print(f"  {Colors.YELLOW}say <name> <message>{Colors.END} - Speak to a Lonk")
     print("  sources - List connections; readings <name> - Show a Lonk's source history")
+    print("  policy <name> - test a proposal; rollback <name> - undo and freeze learning")
     print("  molt - Moltbook registration, draft, and publishing commands")
     print(f"  {Colors.YELLOW}quit{Colors.END} - Exit the simulation")
     print()
@@ -1662,6 +1677,18 @@ def main():
         if user in ["quit", "exit"]:
             print(f"{Colors.WHITE}The Lonks curl up and rest.{Colors.END}")
             break
+
+        elif user.startswith(("policy ", "rollback ")):
+            from adaptation import reflect, rollback
+            command, name = raw_user.split(maxsplit=1)
+            matches = [l for l in world.lonks if l.name.casefold() == name.casefold()]
+            if len(matches) != 1:
+                print("Use a unique current Lonk name.")
+            else:
+                try:
+                    print((reflect if command.lower() == "policy" else rollback)(world, matches[0]))
+                except ValueError as error:
+                    print(str(error))
 
         elif user == "molt" or user.startswith("molt "):
             moltbook.command(user, world)

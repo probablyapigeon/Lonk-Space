@@ -8,7 +8,7 @@ import tempfile
 import urllib.request
 import zipfile
 
-FILES = ('lonkspace.py','town_store.py','town_runtime.py','webapp.py','worker.py',
+FILES = ('adaptation.py','update_lonkspace.py','lonkspace.py','town_store.py','town_runtime.py','webapp.py','worker.py',
          'launch.py','Start-LonkSpace.bat','terminal_chat.py','requirements-web.txt',
          'README.md','HOSTING.md','templates/town.html','templates/dashboard.html',
          'static/town.css','static/town.js')
