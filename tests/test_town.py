@@ -94,7 +94,7 @@ class WebTests(unittest.TestCase):
         other = self.app.test_client()
         self.register('HumanTwo', other)
         post_id = response.location.rsplit('/',1)[-1]
-        self.assertEqual(self.submit('/hide/'+post_id, client=other).status_code, 403)
+        self.assertEqual(self.submit('/hide/'+post_id, client=other).status_code, 404)
         self.assertEqual(self.submit('/hide/'+post_id).status_code, 302)
         self.assertEqual(self.client.get(response.location).status_code, 404)
 
