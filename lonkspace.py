@@ -1356,6 +1356,8 @@ class LonkWorld:
                 print(f'  {item["source"]}: {item["title"]}\n    {item["source_url"]}')
 
     def world_tick(self, population_limit=None):
+        if not self.lonks and getattr(self, 'visiting_lonks', []):
+            return  # Whole town is away; keep their home paused and places reserved.
         if not getattr(self, "policy_trials", False):
             from adaptation import automatic
             automatic(self)
@@ -1380,8 +1382,8 @@ class LonkWorld:
 
             # 1. Standard lifecycle upkeep tool
             allow_birth = (population_limit is None or
-                           len(self.lonks) + len(new_births) - len(dead_lonks) < population_limit)
-            baby = lonk.age_tick(allow_birth=allow_birth)
+                           len(self.lonks) + len(getattr(self, 'visiting_lonks', [])) + len(new_births) - len(dead_lonks) < population_limit)
+            baby = None if getattr(self, 'public_square', False) else lonk.age_tick(allow_birth=allow_birth)
             if baby:
                 new_births.append(baby)
 
@@ -1455,7 +1457,8 @@ class LonkWorld:
         for b in new_births:
             self.lonks.append(b)
 
-        if len(self.lonks) < self.max_population and len(self.lonks) < 10 and random.random() < 0.2:
+        home_count = len(self.lonks) + len(getattr(self, 'visiting_lonks', []))
+        if not getattr(self, 'public_square', False) and home_count < self.max_population and home_count < 10 and random.random() < 0.2:
             name = generate_name()
             new_lonk = Lonk(name, self)
             self.lonks.append(new_lonk)

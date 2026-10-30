@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 ACTIONS = ('attack', 'explore', 'think', 'ouch', 'socialize', 'idle', 'surf_web')
-GATE = 'offline-welfare-v1'
+GATE = 'offline-welfare-v2'
 SEEDS = (1103, 2207, 3301, 4409)
 HORIZON = 3
 
@@ -79,7 +79,7 @@ def passes(pairs):
     for old, new in pairs:
         if not all(math.isfinite(v) for row in (old, new) for v in row.values()):
             return False
-        if new['alive'] < old['alive'] or new['trauma'] > old['trauma'] or new['population'] > 20:
+        if new['alive'] < old['alive'] or new['trauma'] > old['trauma'] or new['population'] > max(20, old['population']):
             return False
         improvements.append(new['welfare'] - old['welfare'])
     return sum(improvements) / len(improvements) >= 0.1
@@ -105,7 +105,7 @@ def reflect(world, lonk):
     if candidate is None or candidate == before:
         return 'No change: ' + reason
     history = [r for r in world.policy_audit if r['resident'] == lonk.id
-               and r['decision'] in ('accepted', 'rollback')]
+               and r['decision'] in ('accepted', 'rollback', 'arrival', 'return')]
     if history and before != history[-1]['after']:
         raise ValueError('Current policy differs from its audit record; change blocked.')
     accepted = False
@@ -136,8 +136,8 @@ def rollback(world, lonk):
     if not verify(world):
         raise ValueError('Policy history failed its hash check; no change applied.')
     history = [r for r in world.policy_audit if r['resident'] == lonk.id
-               and r['decision'] in ('accepted', 'rollback')]
-    if not history or history[-1]['decision'] == 'rollback':
+               and r['decision'] in ('accepted', 'rollback', 'arrival', 'return')]
+    if not history or history[-1]['decision'] != 'accepted':
         return 'No accepted change available to roll back.'
     latest = history[-1]
     if lonk.behavior_policy != latest['after']:

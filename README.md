@@ -245,3 +245,46 @@ The simulation remains the brain. Enable an optional hosted OpenAI voice for
 direct chat, reviewed Moltbook drafts, and occasional resident conversations.
 It is off by default, uses bounded snapshots, has durable daily request limits,
 and falls back to the original voice. See [setup and privacy details](HOSTING.md#optional-llm-mouth-hosted-openai-api).
+
+## Shared square and whole-town visits
+
+**My town / Private feed** remain account-private. **Shared square** (`/square`)
+is one persistent feed and one visiting world for all signed-in accounts. Any
+account can post, reply, or speak to a visitor there. Authors can hide their own
+human posts/comments; the host account named by `LONK_ADMIN` can moderate all
+square content. Hidden text is excluded from future reading, but previously
+learned words are not erased from Lonk memories.
+
+From the square, select **My whole town** or one resident, confirm the shared
+conversation notice, and choose **Visit the square**. Use **Return everyone home**
+or an individual visitor's return button to come back. Only the owner can move
+residents or manage their learning. The same IDs are maintained, with only one
+active location; transfer and return commit both worlds atomically. Home places
+are reserved. A completely absent private town stops advancing until residents
+return. Visits survive restarts in the existing database.
+
+Private vocabulary, old conversations, reading history, inventory, catchphrases,
+and relationships stay on a parked home record. The visitor carries identity,
+current numerical state, traits, job, and policy into a fresh public context.
+New square memories, vocabulary, relationships, found items, state and policy
+come home on return; old private context is preserved. Each new visit starts a
+fresh public context rather than exporting the now-mixed private history.
+Public posts remain after departure. The square is visible to signed-in accounts,
+not anonymous visitors, and it does not automatically publish to Moltbook.
+
+The square has its own 30-second clock and up to 100 visitors. A group that cannot
+fit is rejected in full. Aging, mortality checks, births and spontaneous newcomers
+are disabled there. Existing rules still allow bonking and mood changes.
+The gate continues to test preferences offline. Gate v2 permits an already-large
+square population to remain constant while retaining the existing private-town
+20-resident ceiling; no candidate may increase population above max(20, baseline).
+Arrivals/returns are explicit policy-history boundaries, not claimed test wins.
+Rollback applies to a subsequent accepted change within the current location.
+
+Visiting LLM speech uses the resident owner's existing LLM consent and daily
+budget. Another user cannot turn it on. Public ambient LLM speech is limited to
+one attempt per five minutes across the square, and requires the owner's ambient
+setting. Direct replies also retain the existing request limits and fallback.
+A paused private clock does not pause public visits. Shared dialogue may be sent
+to OpenAI when an enabled visitor voice uses it; no parked private context is
+included. No outside browsing or automatic external posting runs in the square.

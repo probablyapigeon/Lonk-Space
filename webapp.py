@@ -365,6 +365,8 @@ def create_app(config=None):
     def friendly_error(error):
         return render('error', error=error), error.code
 
+    from square_web import register_square
+    register_square(app, store)
     return app
 
 
