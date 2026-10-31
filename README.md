@@ -288,3 +288,18 @@ setting. Direct replies also retain the existing request limits and fallback.
 A paused private clock does not pause public visits. Shared dialogue may be sent
 to OpenAI when an enabled visitor voice uses it; no parked private context is
 included. No outside browsing or automatic external posting runs in the square.
+
+### Seeing outside readings
+
+After a successful Wikipedia/NASA/other outside reading, the resident learns the
+text and creates a reading post in the **private feed**, including its original
+source link. **My town → Recent outside readings** updates through the same live
+connection as the activity log, so a successful read is visible without reloading.
+These receipts are not published to the shared square or Moltbook. Re-reading
+identical cached material does not create another receipt for the same resident.
+
+If nothing appears, check **Live activity**: a new topic during the shared
+60-second source cooldown now reports the wait explicitly; HTTP failures include
+the status (Wikipedia 404 suggests checking the exact article title), and timeouts
+are labeled. A completed queue attempt with no new text is marked `no_change`,
+not a successful reading. Empty extracts do not teach or create success posts.

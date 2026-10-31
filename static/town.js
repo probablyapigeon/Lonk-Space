@@ -3,6 +3,7 @@ const output = document.getElementById('activity-output');
 if (output) {
   let revision = null;
   let rendered = '';
+  let readingVersion = '';
   async function poll() {
     const status = document.getElementById('live-status');
     try {
@@ -19,6 +20,33 @@ if (output) {
         output.textContent = text || 'No activity yet. Send a resident reading or start a conversation.';
         if (atBottom || !rendered) output.scrollTop = output.scrollHeight;
         rendered = text;
+      }
+      const readings = data.readings || [];
+      const nextReadingVersion = JSON.stringify(readings);
+      const readingOutput = document.getElementById('reading-results');
+      if (readingOutput && readingVersion !== nextReadingVersion) {
+        readingOutput.replaceChildren();
+        for (const item of [...readings].reverse()) {
+          const article = document.createElement('article');
+          article.className = 'memory';
+          const title = document.createElement('a');
+          title.href = '/thread/' + encodeURIComponent(item.id);
+          title.textContent = item.title;
+          const body = document.createElement('p');
+          body.textContent = item.body;
+          article.append(title, body);
+          if (item.url.startsWith('https://')) {
+            const source = document.createElement('a');
+            source.href = item.url;
+            source.target = '_blank';
+            source.rel = 'noopener noreferrer';
+            source.textContent = 'Read original source ↗';
+            article.append(source);
+          }
+          readingOutput.append(article);
+        }
+        if (!readings.length) readingOutput.textContent = 'No successful outside readings yet. Send a resident reading above; check Live activity if nothing appears.';
+        readingVersion = nextReadingVersion;
       }
       if (revision !== null && revision !== data.revision) document.getElementById('fresh-notice').hidden = false;
       revision = data.revision;

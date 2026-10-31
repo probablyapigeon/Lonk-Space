@@ -19,8 +19,18 @@ class CachedReader(ReadingNetwork):
             self.next_fetch[source] = time.time() + 60
             try:
                 self.cache[(source, topic)] = self.fetch(source, topic)
+            except requests.HTTPError as error:
+                status = error.response.status_code if error.response is not None else 'unknown'
+                hint = ' Try the exact article title.' if source == 'wiki' and status == 404 else ''
+                raise ValueError(f'{source}: source returned HTTP {status}; no text learned.' + hint)
+            except requests.Timeout:
+                raise ValueError(source + ': request timed out; no text learned. Try again after the cooldown.')
             except requests.RequestException:
                 raise ValueError(source + ': connection failed; no text learned.')
+        elif (source, topic) not in self.cache:
+            import math
+            wait = math.ceil(self.next_fetch[source] - time.time())
+            raise ValueError(f'{source}: wait {wait} seconds before requesting a new topic; no text learned.')
         # read() must only consume prefetched material while a transaction is held.
         for name in self.SOURCES:
             self.next_fetch[name] = max(self.next_fetch.get(name, 0), time.time() + 1)
@@ -99,7 +109,9 @@ class TownRuntime:
                     if not lonk:
                         raise ValueError('That resident is no longer alive. Choose a current resident.')
                     lonk.habits['surf_web'] += 1
-                    self.reader.read(lonk, source, args.get('topic', ''))
+                    learned = self.reader.read(lonk, source, args.get('topic', ''))
+                    if not learned:
+                        state = 'no_change'
                     self.store.write(db, world)
                     text = output.getvalue()
             elif job['kind'] == 'policy':

@@ -337,7 +337,11 @@ def create_app(config=None):
             row = db.execute('SELECT revision,last_tick FROM towns WHERE owner_id=?', (g.user['id'],)).fetchone()
             logs = db.execute('SELECT id,tick,text FROM activity WHERE owner_id=? ORDER BY id DESC LIMIT 15', (g.user['id'],)).fetchall()[::-1]
             count = db.execute("SELECT count(*) FROM commands WHERE owner_id=? AND state IN ('pending','running')", (g.user['id'],)).fetchone()[0]
-            return jsonify(tick=bound.read(db).tick, revision=row['revision'], last_tick=row['last_tick'],
+            world = bound.read(db)
+            readings = [{'id': p['id'], 'title': p['title'], 'body': p['body'],
+                         'source': p['reading_source'], 'url': p.get('source_url', '')}
+                        for p in world.lonkspace_feed if p.get('reading_source') and not p.get('hidden')][-5:]
+            return jsonify(tick=world.tick, readings=readings, revision=row['revision'], last_tick=row['last_tick'],
                            pending=count, settings=bound.settings(db), logs=[dict(x) for x in logs])
 
     @app.post('/password')
