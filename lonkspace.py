@@ -480,7 +480,7 @@ class ReadingNetwork:
                 body = self.clean(item.get('text'))
                 message = (title + '. ' + body).strip()
                 fingerprint = hashlib.sha256((source + message).encode()).hexdigest()
-                if message and fingerprint not in seen:
+                if body and fingerprint not in seen:
                     choices.append((item, title, message, fingerprint))
             if not choices:
                 print(f'{lonk.name}: no new readable items from {source} right now.'); return False
@@ -495,6 +495,11 @@ class ReadingNetwork:
             lonk.memory['events'][-1].update(record)
             lonk.reading_history.append(record)
             lonk.reading_history[:] = lonk.reading_history[-100:]
+            if lonk.world is not None:
+                post = lonk.world.add_post(lonk.name, f'{lonk.name} read: {title}'[:160],
+                                           message, author_id=lonk.id)
+                post.update(reading_source=source, source_url=record['source_url'],
+                            content_kind=record['content_kind'])
             return True
         except requests.RequestException as error:
             print(f'{source}: connection failed ({type(error).__name__}); no text learned.')
